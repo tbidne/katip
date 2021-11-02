@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Katip.Tests.Scribes.Datadog.TCP
@@ -9,13 +10,19 @@ where
 import Control.Concurrent.Async
 import qualified Control.Exception.Safe as EX
 import qualified Data.Aeson as A
+#if MIN_VERSION_aeson(2, 0, 0)
+import qualified Data.Aeson.Key as K
+import qualified Data.Aeson.KeyMap as KM
+#endif
 import qualified Data.Char as Char
 import qualified Data.Conduit as C
 import qualified Data.Conduit.Binary as CB
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Network as CN
 import Data.Foldable (toList)
+#if !MIN_VERSION_aeson(2, 0, 0)
 import qualified Data.HashMap.Strict as HM
+#endif
 import Data.IORef
 import Data.Sequence ((|>))
 import Data.Text (Text)
@@ -38,7 +45,7 @@ tests =
         length logs @?= 1
         let (CapturedLog ns dta sev msg thread) = head logs
         ns @?= Namespace ["katip-datadog-tests", "mynamespace"]
-        dta @?= A.Object (HM.singleton "foo" (A.String "bar"))
+        dta @?= A.Object (singletonMap "foo" (A.String "bar"))
         sev @?= InfoS
         msg @?= "a message"
         if T.all Char.isNumber thread && T.length thread > 0
@@ -47,6 +54,14 @@ tests =
     ]
   where
     noLoc = Nothing
+
+#if MIN_VERSION_aeson(2, 0, 0)
+singletonMap :: K.Key -> v -> KM.KeyMap v
+singletonMap = KM.singleton
+#else
+singletonMap :: k -> v -> HM.HashMap k v
+singletonMap = HM.singleton
+#endif
 
 -------------------------------------------------------------------------------
 
