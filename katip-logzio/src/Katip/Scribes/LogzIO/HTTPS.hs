@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -51,10 +52,16 @@ import qualified Control.Exception.Safe as EX
 import Control.Monad
 import qualified Control.Retry as Retry
 import qualified Data.Aeson as A
+#if MIN_VERSION_aeson(2, 0, 0)
+import qualified Data.Aeson.Key as K
+import qualified Data.Aeson.KeyMap as KM
+#endif
 import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Lazy.Char8 as LBS8
+#if !MIN_VERSION_aeson(2, 0, 0)
 import qualified Data.HashMap.Strict as HM
+#endif
 import Data.Int
 import qualified Data.Scientific as Scientific
 import Data.Semigroup as Semigroup
@@ -433,7 +440,7 @@ measureJSONLine a = (BB.lazyByteString lbs, Bytes (LBS.length lbs))
 -- | Fully-rendered JSON object for an item
 fullItemObject :: K.LogItem a => K.Verbosity -> K.Item a -> A.Object
 fullItemObject verbosity item =
-  HM.fromList
+  mapFromList
     [ "app" A..= K._itemApp item,
       "env" A..= K._itemEnv item,
       "sev" A..= K._itemSeverity item,
@@ -456,6 +463,20 @@ fullItemObject verbosity item =
     ]
   where
     POSIX.CPid pidInt = K._itemProcess item
+
+#if MIN_VERSION_aeson(2, 0, 0)
+mapFromList :: [(K.Key, v)] -> KM.KeyMap v
+mapFromList = KM.fromList
+
+mapToList :: KM.KeyMap v -> [(K.Key, v)]
+mapToList = KM.toList
+#else
+mapFromList :: [(T.Text, v)] -> HM.HashMap T.Text v
+mapFromList = HM.fromList
+
+mapToList :: HM.HashMap T.Text v -> [(T.Text, v)]
+mapToList = HM.toList
+#endif
 
 -- | A version of 'renderLine' which renders a line and stays under
 -- the maximum line size of 500,000 bytes. If the default rendering is
@@ -489,7 +510,7 @@ renderLineTruncated' customMaxLogLineLength verbosity item =
     -- item is too big
     blankObject :: A.Object
     blankObject =
-      HM.fromList
+      mapFromList
         [ "message" A..= A.String "", -- we'll start with a blank message
           "@timestamp" A..= K._itemTime item
         ]
@@ -498,7 +519,7 @@ renderLineTruncated' customMaxLogLineLength verbosity item =
     (fallbackLine, fallbackSize) = measureJSONLine fallbackObject
     fallbackObject :: A.Object
     fallbackObject =
-      HM.fromList
+      mapFromList
         [ "message" A..= A.toJSON (TL.take (bytes messageBytesAllowed) (TB.toLazyText (K.unLogStr (K._itemMessage item)))),
           "@timestamp" A..= A.toJSON (K._itemTime item)
         ]
@@ -599,7 +620,7 @@ annotateValue (A.Array a) = A.Array (annotateValue <$> a)
 annotateValue x = x
 
 annotateKeys :: A.Object -> A.Object
-annotateKeys = HM.fromList . map go . HM.toList
+annotateKeys = mapFromList . map go . mapToList
   where
     go (k, A.Object o) = (k, A.Object (annotateKeys o))
     go (k, A.Array a) = (k, A.Array (annotateValue <$> a))
@@ -615,17 +636,22 @@ annotateKeys = HM.fromList . map go . HM.toList
 -- Annotation Constants
 -------------------------------------------------------------------------------
 
+#if MIN_VERSION_aeson(2, 0, 0)
+stringAnn :: K.Key
+doubleAnn :: K.Key
+longAnn :: K.Key
+booleanAnn :: K.Key
+nullAnn :: K.Key
+#else
 stringAnn :: T.Text
-stringAnn = "::s"
-
 doubleAnn :: T.Text
-doubleAnn = "::d"
-
 longAnn :: T.Text
-longAnn = "::l"
-
 booleanAnn :: T.Text
-booleanAnn = "::b"
-
 nullAnn :: T.Text
+#endif
+
+stringAnn = "::s"
+doubleAnn = "::d"
+longAnn = "::l"
+booleanAnn = "::b"
 nullAnn = "::n"

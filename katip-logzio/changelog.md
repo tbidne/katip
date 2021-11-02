@@ -1,3 +1,7 @@
+0.1.2.0
+=======
+* Aeson 2 compatibility
+
 0.1.1.0
 =======
 * Fixed bug where on scribe close, any items left in the buffer that

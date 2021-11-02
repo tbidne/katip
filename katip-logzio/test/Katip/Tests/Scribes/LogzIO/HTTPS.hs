@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Katip.Tests.Scribes.LogzIO.HTTPS
@@ -13,10 +14,16 @@ import Control.Exception.Safe
 import Control.Monad
 import Control.Monad.IO.Class
 import Data.Aeson as A
+#if MIN_VERSION_aeson(2, 0, 0)
+import qualified Data.Aeson.Key as K
+import qualified Data.Aeson.KeyMap as KM
+#endif
 import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Lazy.Char8 as LBS8
+#if !MIN_VERSION_aeson(2, 0, 0)
 import qualified Data.HashMap.Strict as HM
+#endif
 import Data.Int
 import Data.Scientific
 import Data.Text (Text)
@@ -431,12 +438,26 @@ genValue = Gen.recursive Gen.choice nonRecursiveGens recursiveGens
       [ A.Object <$> genObject,
         A.Array <$> genArray
       ]
-    genObject = HM.fromList <$> Gen.list (Range.linear 0 20) genPair
+    genObject = mapFromList <$> Gen.list (Range.linear 0 20) genPair
       where
-        genPair = (,) <$> genSmallText <*> genValue
+        genPair = toKeyVal <$> genSmallText <*> genValue
     genArray =
       V.fromList
         <$> Gen.list (Range.linear 0 20) genValue
+
+#if MIN_VERSION_aeson(2, 0, 0)
+mapFromList :: [(K.Key, v)] -> KM.KeyMap v
+mapFromList = KM.fromList
+
+toKeyVal :: Text -> v -> (K.Key, v)
+toKeyVal = (,) . K.fromText
+#else
+mapFromList :: [(Text, v)] -> HM.HashMap Text v
+mapFromList = HM.fromList
+
+toKeyVal :: Text -> v -> (Text, v)
+toKeyVal = (,)
+#endif
 
 genScientific :: Gen Scientific
 genScientific =
